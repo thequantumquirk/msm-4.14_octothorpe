@@ -1,4 +1,5 @@
 /* Copyright (c) 2008-2021, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -3726,7 +3727,7 @@ long kgsl_ioctl_sparse_virt_free(struct kgsl_device_private *dev_priv,
 	unsigned int cmd, void *data)
 {
 	struct kgsl_process_private *process = dev_priv->process_priv;
-	struct kgsl_device *device = dev_priv->device;
+        struct kgsl_device *device = dev_priv->device;
 	struct kgsl_sparse_virt_free *param = data;
 	struct kgsl_mem_entry *entry = NULL;
 

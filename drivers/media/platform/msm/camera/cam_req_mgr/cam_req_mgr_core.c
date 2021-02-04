@@ -1,4 +1,5 @@
 /* Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -709,6 +710,7 @@ static int __cam_req_mgr_check_sync_for_mslave(
 	int32_t sync_req_status = 0;
 	uint64_t sof_timestamp_delta = 0;
 	int sync_link_idx = 0;
+	int link_idx;
 
 	if (!link->sync_link) {
 		CAM_ERR(CAM_CRM, "Sync link null");
@@ -720,6 +722,11 @@ static int __cam_req_mgr_check_sync_for_mslave(
 	sync_num_slots = sync_link->req.in_q->num_slots;
 	sync_rd_idx = sync_link->req.in_q->rd_idx;
 	sync_rd_slot = &sync_link->req.in_q->slot[sync_rd_idx];
+
+	sof_timestamp_delta =
+		link->sof_timestamp >= sync_link->sof_timestamp
+		? link->sof_timestamp - sync_link->sof_timestamp
+		: sync_link->sof_timestamp - link->sof_timestamp;
 
 	sof_timestamp_delta =
 		link->sof_timestamp >= sync_link->sof_timestamp
@@ -848,15 +855,14 @@ static int __cam_req_mgr_check_sync_for_mslave(
 			return rc;
 		}
 
-		sync_link_idx = __cam_req_mgr_find_slot_for_req(
+		link_idx = __cam_req_mgr_find_slot_for_req(
 				sync_link->req.in_q, request_id);
-		if (sync_link_idx != -1) {
-			sync_req_status =
-				sync_link->req.in_q->slot[sync_link_idx].status;
+		if (link_idx != -1) {
+			sync_req_status = sync_link->req.in_q->slot[link_idx].status;
+			CAM_INFO(CAM_CRM, "Dummy log : req %lld id %d", request_id, link_idx);
 			if (sync_req_status != CRM_SLOT_STATUS_REQ_APPLIED) {
-				CAM_DBG(CAM_CRM,
-					"Skipping initial sync req %lld id %d as master not applied",
-					request_id, sync_link_idx);
+				CAM_ERR(CAM_CRM, "Skipping initial sync req %lld id %d as master not applied",
+					request_id, link_idx);
 				return -EINVAL;
 			}
 		} else
@@ -864,12 +870,8 @@ static int __cam_req_mgr_check_sync_for_mslave(
 
 		if ((sync_link->initial_sync_req == req_id) &&
 			(sync_req_status == CRM_SLOT_STATUS_REQ_APPLIED) &&
-			(sof_timestamp_delta  < (sync_frame_duration / 2)) &&
-			(((sync_link_idx - sync_rd_idx + sync_num_slots) %
-			sync_num_slots) <= 1) &&
-			(sync_rd_slot->status !=
-			CRM_SLOT_STATUS_REQ_APPLIED)) {
-			CAM_DBG(CAM_CRM, "Skipping initial sync req for slave");
+			(sof_timestamp_delta  < (sync_frame_duration / 2))) {
+			CAM_ERR(CAM_CRM, "Skipping initial sync req for slave");
 			return -EINVAL;
 		}
 
@@ -1343,7 +1345,8 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 					(link->sync_link->is_master))
 					reset_step =
 						link->sync_link->max_delay;
-			}
+						}
+
 
 			/* This is to handle a rare scenario of scheduling
 			 * issue. If ISP sends multiple sofs due to scheduling
@@ -1358,7 +1361,7 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 				last_app_idx = in_q->last_applied_idx;
 				in_q->last_applied_idx = idx;
 			}
-
+                         reset_step += 2;
 			__cam_req_mgr_dec_idx(
 				&idx, reset_step + 1,
 				in_q->num_slots);
@@ -2290,16 +2293,11 @@ static void cam_req_mgr_process_reset_for_dual_link(
 	sync_idx = __cam_req_mgr_find_slot_for_req(sync_in_q,
 			trigger_data->req_id);
 	if (link->is_master)
-		__cam_req_mgr_dec_idx(&sync_idx,
-			(link->max_delay - link->sync_link->max_delay),
-			sync_in_q->num_slots);
+		__cam_req_mgr_dec_idx(&sync_idx, 1, sync_in_q->num_slots);
 	else
-		__cam_req_mgr_inc_idx(&sync_idx,
-			(link->sync_link->max_delay - link->max_delay),
-			sync_in_q->num_slots);
+		__cam_req_mgr_inc_idx(&sync_idx, 1, sync_in_q->num_slots);
 	if (sync_idx != -1 &&
-		(sync_in_q->slot[sync_in_q->rd_idx].status ==
-		CRM_SLOT_STATUS_REQ_APPLIED)) {
+		sync_in_q->slot[sync_in_q->rd_idx].status == CRM_SLOT_STATUS_REQ_APPLIED) {
 		idx = __cam_req_mgr_find_slot_for_req(in_q,
 			trigger_data->req_id);
 		CAM_DBG(CAM_CRM, "Reset req: %lld idx: %d link_hdl: %x",
@@ -3412,7 +3410,8 @@ int cam_req_mgr_sync_config(
 
 	link1->is_master = false;
 	link2->is_master = false;
-
+	link1->initial_skip = false;
+	link2->initial_skip = false;
 	link1->in_msync_mode = false;
 	link2->in_msync_mode = false;
 	link1->initial_sync_req = -1;

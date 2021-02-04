@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2013, Sony Mobile Communications AB.
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -616,14 +617,30 @@ static void msm_gpio_dbg_show_one(struct seq_file *s,
 	seq_printf(s, " %s", pulls[pull]);
 }
 
+//#define ARRAY_SIZE(x) (sizeof(x)/sizeof((x)[0]))
+static is_tz_ctr_gpio(unsigned gpio)
+{
+	static unsigned tz_gpio[] = {0, 1, 2, 3};
+	unsigned i;
+
+	for (i = 0; i < ARRAY_SIZE(tz_gpio); i++) {
+		if (gpio == tz_gpio[i])
+			return true;
+	}
+
+	return false;
+}
+
 static void msm_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 {
 	unsigned gpio = chip->base;
 	unsigned i;
 
 	for (i = 0; i < chip->ngpio; i++, gpio++) {
-		msm_gpio_dbg_show_one(s, NULL, chip, i, gpio);
-		seq_puts(s, "\n");
+		if(!is_tz_ctr_gpio(i)) {
+			msm_gpio_dbg_show_one(s, NULL, chip, i, gpio);
+			seq_puts(s, "\n");
+		}
 	}
 }
 
